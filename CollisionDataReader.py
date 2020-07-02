@@ -1,6 +1,6 @@
 """
 Author: Darko Frtunik
-VERSION 0.1
+VERSION 0.2
 
 PLEASE NOT THIS IS STILL A WIP
 
@@ -51,37 +51,64 @@ def read_from_csv(file_name):
     return output_df
 
 
-def create_kde(dataframe, collisiontype, kpp, conflictsfilename, vehicletypes):
+def create_kde(data_frame, key_performance_parameter, conflicts_file_name, vehicle_types, p_style,
+               collision_type='rear end'):
     """
     This function produces a KDE histogram plot of the Key performance parameter specified.
-
-    NB: This function requires the seaborn library be imported as sns
-
-    :param DataFrame: A dataFrame of the conflicts file which is desired to be analysed.
-    :param CollisionType: One of the accident types outputted from SSAM analysis. "rear end", "
-    :param kpp: Key Performance parameter. PET, TTC, or DeltaS
-    :param conflictsfilename: a string name of the filename used to name the figure when saved
-    :param vehicletypes: a string name used in setting the label of the graph
+    NB: This function requires the seaborn library be imported as sns, and for pandas library to
+    be available.
+    :param data_frame: A dataFrame of the conflicts file which is desired to be analysed.
+    :param key_performance_parameter: Key Performance parameter. PET, TTC, or DeltaS
+    :param conflicts_file_name: a string name of the filename used to name the figure when saved
+    :param vehicle_types: a string name used in setting the label of the graph
+    :param p_style: String array used to define the colour and line-style of the KDE plot.
+    :param collision_type: One of the accident types outputted from SSAM analysis. "rear end", "
     This function will create a KDE and save it to the source file as a .png with the filename taken from the
     conflicts file.
     """
-
-    # Crop Dataframe for conflict type
-    kde_df = dataframe[dataframe['ConflictType'] == ctype]
+    # Crop Data_Frame for conflict type
+    kde_df = data_frame[data_frame['ConflictType'] == collision_type]
 
     # Create kde
-    sns.kdeplot(kde_df[kpp], cut=0)
+    sns.kdeplot(kde_df[key_performance_parameter], color=p_style[0], linestyle=p_style[1],
+                label=vehicle_types + ' ' + conflicts_file_name + ' ' + collision_type)
 
     # Set x-axis label
-    plt.xlabel(kpp + ' (s)')
+    plt.xlabel(key_performance_parameter + ' (s)')
     # Set legend
-    plt.legend([vehicletypes + ' ' + conflictsfilename + ' ' + collisiontype], loc='upper center',
-               bbox_to_anchor=(0.5, 1.1))
+    plt.legend(loc='upper right')
+    # plt.legend(loc='right', bbox_to_anchor=(1.25, 0.5))
 
     # Save image with filename from conflicts file
-    plt.savefig(vehicletypes + conflictsfilename + '_' + collisiontype + '_' + kpp + '.png', transparent=True)
+    plt.draw()
 
 
+def create_heatmap(dataframe, value, heatmap_title, lower_better=True, format='.0f'):
+    """
+    Function to generate seaborn heatmaps out of a specified parameter
+    :param dataframe:
+    :param value:
+    :param title: desired title of the graph
+    :param ascending:
+    :return:
+    """
+    # Format data into 5x4 matrix for use
+    idx = [2, 3, 4, 5, 6]
+    cols = [2, 5, 10, 15]
+    df = pd.DataFrame(np.reshape(dataframe[value].values, (5, 4)), index=idx, columns=cols)
+
+    if lower_better:
+        colour_scheme = "RdBu_r"
+    else:
+        colour_scheme = "RdBu"
+
+    img = sns.heatmap(df, cbar=False, cmap=colour_scheme, annot=True, fmt=format)
+    plt.xlabel('b')
+    plt.ylabel('a')
+    plt.title(heatmap_title)
+
+
+# Begin main function
 # Change working directory to separate folder
 # Get a dataframe which is the simulation ID of the filename associated with the .trj, .fhz
 # This will be used for labelling graphs
@@ -99,84 +126,199 @@ throughput_files = [fname for fname in sub_folder_file_list if '.fhz' in fname]
 conflicts_fnames = [fname for fname in sub_folder_file_list if '_conflicts' in fname]
 att_fnames = [fname for fname in sub_folder_file_list if '.att' in fname]
 
-tpcodes = [tf.split('.')[0] for tf in throughput_files]
-
+# Get the Simulation code which each filename represents, used in conjunction with the simulation library.
+tpcodes = [f.split('_')[0] for f in throughput_files]
+conflict_codes = [f.split('_')[0] for f in conflicts_fnames]
 attcodes = [at.split('_')[0] for at in att_fnames]
 attcodes = [at.split(' ')[3] + '_' + at.split(' ')[5] for at in attcodes]
+attcodes = [sim_ID_list.loc[sim_ID_list['SimID'] == code]['Code'].to_string(index=False).replace(' ', '')
+            for code in attcodes]
+plot_legend = [sim_ID_list.loc[sim_ID_list['Code'] == code]['SimID'].to_string(index=False).replace(' ', '')
+               for code in tpcodes]
 
-# Create a dictionary containing the files and their respective codes for easy matchup
+plot_colour = [None]*len(plot_legend)
+for i, entry in enumerate(plot_legend):
+    if 'a2' in entry:
+        plot_colour[i] = 'b'
+    elif 'a3' in entry:
+        plot_colour[i] = 'r'
+    elif 'a4' in entry:
+        plot_colour[i] = 'g'
+    elif 'a5' in entry:
+        plot_colour[i] = 'c'
+    elif 'a6' in entry:
+        plot_colour[i] = 'm'
 
+plot_style = [None]*len(plot_legend)
+for i, entry in enumerate(plot_legend):
+    if 'b2' in entry:
+        plot_style[i] = ':'
+    elif 'b5' in entry:
+        plot_style[i] = '-'
+    elif 'b10' in entry:
+        plot_style[i] = '--'
+    elif 'b15' in entry:
+        plot_style[i] = '-.'
 
+# Combine dictionaries of codes into a dataframe which will store each filename as rows under the simulation ID code
+# in addition to its simID for use with plot legend. This dataframe used for iteration and creating the graphs one
+# file row at a time.
+all_files = pd.DataFrame((dict(zip(tpcodes, throughput_files)), dict(zip(conflict_codes, conflicts_fnames)),
+                          dict(zip(attcodes, att_fnames)), dict(zip(tpcodes, plot_legend)),
+                          dict(zip(tpcodes, plot_colour)), dict(zip(tpcodes, plot_style))))
 
-# Initialize DataFrame to store Throughput Values
+# Set output filepath for saving figures
+file_save_path = r'C:\Users\darko\Dropbox\Uni\UNSW\Thesis\CollisionDataProcessor\Results\\'
 
-
-for tpf, cff, i in throughput_files, conflicts_fnames, range(len(throughput_files)):
+# This loop sorts through the files which have been placed in the folder and produces a number of visualisations
+for i in range(len(all_files.columns)):
     # Find Throughput for the simulation
     # Import dataframe of throughput csv
     # For some reason .fhz produces an extra useless columm so this must be dropped, if this is not present
     # the error will be ignored. Replacement of spaces is necessary as the .fhz files tend to be messy with spaces
-    throughput = read_from_csv(tpf).drop(columns="Unnamed: 7", errors='ignore')
+    throughput = read_from_csv(all_files.iloc[0][i]).drop(columns="Unnamed: 7", errors='ignore')
     throughput.columns = throughput.columns.str.replace(' ', '')
-
-    # Obtain summary statistics from the throughput DataFrame
-    total_veh = len(throughput.index)
-    cav_total = len(throughput[throughput["VehType"] == 101].index)
-    man_total = total_veh - cav_total
 
     # Matchup VehicleIDs with their types from the .fhz
     # Creates a dictionary of Vehicle IDs whose value is their type
     VehID_Lookup = pd.Series(throughput.VehType.values, index=throughput.VehNo).to_dict()
 
     # SSAM Conflicts register import as DataFrame, drop useless column as per throughput
-    conflicts = read_from_csv(cff).drop(columns="Unnamed: 44", errors='ignore')
-
-    # Matches the conflicts file to its respective SIMID code for simpler visualization of data
-    cf_name = conflicts['trjFile'][0][0:conflicts['trjFile'][0].index('_')]
-    cf_ID = sim_ID_list["SimID"][sim_ID_list["Code"] == cf_name].to_string(index=False)
+    conflicts = read_from_csv(all_files.iloc[1][i]).drop(columns="Unnamed: 44", errors='ignore')
 
     # Creates two new columns in conflicts DataFrame which inserts the vehicle type
-    conflicts['FirstvType'] = conflicts['FirstVID'].map(VehID_Lookup)
-    conflicts['SecondvType'] = conflicts['SecondVID'].map(VehID_Lookup)
-
-    # Extract all unique conflict types from the conflicts file
-    collision_types = conflicts.ConflictType.unique()
-    collision_types = collision_types[np.logical_not(pd.isnull(collision_types))]
+    conflicts['FirstVType'] = conflicts['FirstVID'].map(VehID_Lookup)
+    conflicts['SecondVType'] = conflicts['SecondVID'].map(VehID_Lookup)
 
     # Separate conflicts into the types of vehicles involved in the collisions, save as separate DataFrames
-    av_mv_collisions = conflicts[(conflicts['FirstvType'] == 101) | (conflicts['SecondvType'] == 101)]
-    mv_mv_collisions = conflicts[(conflicts['FirstvType'] == 100) & (conflicts['SecondvType'] == 100)]
+    av_mv_conflicts = conflicts[(conflicts['FirstVType'] == 101) | (conflicts['SecondVType'] == 101)]
+    mv_mv_conflicts = conflicts[(conflicts['FirstVType'] == 100) & (conflicts['SecondVType'] == 100)]
 
-    # Set up list of desired performance parameters
-    performance_param = ['TTC', 'PET']
+    # Extract all unique conflict types from the conflicts file, useful for loops, left for now may revisit in future
+    # collision_types = conflicts.ConflictType.unique()
+    # collision_types = collision_types[np.logical_not(pd.isnull(collision_types))]
 
-    # Filter by collision type and produce KDEs for
-    # KDE for PET and TTC
-    # AV-MV Collisions
-    for ctype in collision_types:
-        for p in performance_param:
-            create_kde(av_mv_collisions, ctype, p, cf_ID, "AV-MV")
+    # Create x4 KDE plots for each combination of rear-end collisions
+    # Rear-End AV-MV TTC
+    plt.figure(1, figsize=(10, 10))
+    create_kde(av_mv_conflicts, 'TTC', all_files.iloc[3][i], 'AV_MV', [all_files.iloc[4][i], all_files.iloc[5][i]])
+    plt.savefig(file_save_path + "AV_MV_Conflicts" + '_' + 'Rear-End' + '_' + 'TTC' + '.png', transparent=True)
 
-    for ctype in collision_types:
-        for p in performance_param:
-            create_kde(mv_mv_collisions, ctype, p, cf_ID, "MV-MV")
+    # Rear-End AV-MV PET
+    plt.figure(2, figsize=(10, 10))
+    create_kde(av_mv_conflicts, 'PET', all_files.iloc[3][i], 'AV_MV', [all_files.iloc[4][i], all_files.iloc[5][i]])
+    plt.savefig(file_save_path + "AV_MV_Conflicts" + '_' + 'Rear-End' + '_' + 'PET' + '.png', transparent=True)
 
-    # Filter PET = 0
+    # Rear-end MV-MV TTC
+    plt.figure(3, figsize=(10, 10))
+    create_kde(mv_mv_conflicts, 'TTC', all_files.iloc[3][i], 'MV_MV', [all_files.iloc[4][i], all_files.iloc[5][i]])
+    plt.savefig(file_save_path + "MV_MV_Conflicts" + '_' + 'Rear-End' + '_' + 'TTC' + '.png', transparent=True)
 
+    # Rear-end MV-MV PET
+    plt.figure(4, figsize=(10, 10))
+    create_kde(mv_mv_conflicts, 'PET', all_files.iloc[3][i], 'MV_MV', [all_files.iloc[4][i], all_files.iloc[5][i]])
+    plt.savefig(file_save_path + "MV_MV_Conflicts" + '_' + 'Rear-End' + '_' + 'PET' + '.png', transparent=True)
 
-    # Plot KDE with DeltaS
+    # Rear-end Total? unsure if needed
+    # plt.figure(3)
 
-    # Add throughput values to value
+    # Filter PET = 0 for collisions
+    av_mv_collisions = av_mv_conflicts[av_mv_conflicts['PET'] == 0]
+    mv_mv_collisions = av_mv_conflicts[av_mv_conflicts['PET'] == 0]
 
+    # Plot KDE with DeltaS for the filtered collision data and plot
 
-crash_rates = pd.DataFrame([])
+    # Rear-End AV-MV TTC, with PET = 0
+    plt.figure(5, figsize=(10, 10))
+    create_kde(av_mv_collisions, 'TTC', all_files.iloc[3][i], 'AV_MV', [all_files.iloc[4][i], all_files.iloc[5][i]])
+    plt.savefig(file_save_path + "AV_MV_Collisions" + '_' + 'Rear-End' + '_' + 'TTC' + '.png', transparent=True)
 
-# Add data to the conflict rates dataframe ready for export
-av_mv_total = len(av_mv_collisions.index)
-mv_mv_total = len(mv_mv_collisions.index)
-crash_rates[0] = (mv_mv_total+av_mv_total)/total_veh
-crash_rates[1] = av_mv_total/man_total
-crash_rates[2] = mv_mv_total/man_total
-crash_rates[3] = av_mv_total/cav_total
-crash_rates[4] = mv_mv_total/cav_total
+    # Rear-End Collisions AV-MV DeltaS, with PET = 0
+    plt.figure(6, figsize=(10, 10))
+    create_kde(av_mv_collisions, 'DeltaS', all_files.iloc[3][i], 'AV_MV', [all_files.iloc[4][i], all_files.iloc[5][i]])
+    plt.savefig(file_save_path + "AV_MV_Collisions" + '_' + 'Rear-End' + '_' + 'PET' + '.png', transparent=True)
 
+    # Rear-End MV-MV TTC, with PET = 0
+    plt.figure(7, figsize=(10, 10))
+    create_kde(mv_mv_collisions, 'TTC', all_files.iloc[3][i], 'MV_MV', [all_files.iloc[4][i], all_files.iloc[5][i]])
+    plt.savefig(file_save_path + "AV_MV_Collisions" + '_' + 'Rear-End' + '_' + 'TTC' + '.png', transparent=True)
+
+    # Rear-End Collisions MV-MV DeltaS, with PET = 0
+    plt.figure(8, figsize=(10, 10))
+    create_kde(mv_mv_collisions, 'DeltaS', all_files.iloc[3][i], 'MV_MV', [all_files.iloc[4][i], all_files.iloc[5][i]])
+    plt.savefig(file_save_path + "AV_MV_Collisions" + '_' + 'Rear-End' + '_' + 'DeltaS' + '.png', transparent=True)
+
+    # Import the attributes file as a Data_Frame
+    att = read_from_csv(all_files.iloc[2][i])
+
+    # Update att with key statistics from throughput and collision Data_Frames use in generating heat maps
+    att['Throughput'] = len(throughput.index)
+    att['TotalCAV'] = len(throughput[throughput["VehType"] == 101].index)
+    att['Total_Manual'] = att['Throughput'] - att['TotalCAV']
+    att['TotalConflicts_MV-MV'] = len(mv_mv_collisions.index)
+    att['TotalConflicts_AV-MV'] = len(av_mv_collisions.index)
+    att['TotalConflictRate'] = (att['TotalConflicts_AV-MV'] + att['TotalConflicts_MV-MV'])/att['Throughput']
+    att['MV-MV_TotalRate'] = att['TotalConflicts_MV-MV']/att['Total_Manual']
+    att['AV-MV_TotalRate'] = att['TotalConflicts_AV-MV']/att['TotalCAV']
+    att['MV-AV_TotalRate'] = att['TotalConflicts_AV-MV']/att['Total_Manual']
+    att['Total_Collisions_AV-MV'] = len(av_mv_collisions.index)
+    att['Total_Collisions_MV-MV'] = len(mv_mv_collisions.index)
+    att['Total_Collisions'] = att['Total_Collisions_MV-MV'] + att['Total_Collisions_AV-MV']
+    att['Total_Collision_Rate'] = (att['Total_Collisions_MV-MV'] + att['Total_Collisions_AV-MV'])/att['Throughput']
+
+    # Concatenates the attribute files into a dataframe for use in heatmap generators
+    if i == 0:
+        att_compiled = att
+    else:
+        att_compiled = att_compiled.append(att)
+
+# ATT Heatmap diagrams
+att_compiled.index = all_files.iloc[3].values
+
+plt.figure(9)
+create_heatmap(att_compiled, 'TRAVTMTOT(ALL)', 'Total System Travel Time ' + all_files.iloc[3][0].split('_')[0] +
+               ' Penetration')
+plt.savefig(file_save_path + 'Total_System_Travel_Time_' + all_files.iloc[3][0].split('_')[0] +
+            '_Penetration.png', transparent=True)
+
+plt.figure(10)
+create_heatmap(att_compiled, 'SPEEDAVG(ALL)', 'Network Average Speed ' + all_files.iloc[3][0].split('_')[0] +
+               ' Penetration', lower_better=False, format='.2f')
+plt.savefig(file_save_path + 'Network_Average_Speed_' + all_files.iloc[3][0].split('_')[0] +
+            '_Penetration.png', transparent=True)
+
+plt.figure(11)
+create_heatmap(att_compiled, 'Throughput', 'Throughput ' + all_files.iloc[3][0].split('_')[0] +
+               ' Penetration')
+plt.savefig(file_save_path + 'Throughput_' + all_files.iloc[3][0].split('_')[0] +
+            '_Penetration.png', transparent=True)
+
+plt.figure(12)
+create_heatmap(att_compiled, 'DELAYAVG(ALL)', 'Average Delay ' + all_files.iloc[3][0].split('_')[0] +
+               ' Penetration', format='.2f')
+plt.savefig(file_save_path + 'Average_Delay_' + all_files.iloc[3][0].split('_')[0] +
+            '_Penetration.png', transparent=True)
+
+plt.figure(13)
+create_heatmap(att_compiled, 'TotalConflictRate', 'Total Rate of Conflict ' + all_files.iloc[3][0].split('_')[0] +
+               ' Penetration', format='.4f')
+plt.savefig(file_save_path + 'Total_Rate_of_Conflict_' + all_files.iloc[3][0].split('_')[0] +
+            '_Penetration.png', transparent=True)
+
+plt.figure(14)
+create_heatmap(att_compiled, 'MV-MV_TotalRate', 'Total Rate of Conflict MV-MV ' +
+               all_files.iloc[3][0].split('_')[0] + ' Penetration', format='.4f')
+plt.savefig(file_save_path + 'Total_Rate_of_Conflict_MV-MV_' + all_files.iloc[3][0].split('_')[0] +
+            '_Penetration.png', transparent=True)
+
+plt.figure(15)
+create_heatmap(att_compiled, 'AV-MV_TotalRate', 'Total Rate of Conflict AV-MV ' +
+               all_files.iloc[3][0].split('_')[0] + ' Penetration', format='.4f')
+plt.savefig(file_save_path + 'Total_Rate_of_Conflict_AV-MV_' + all_files.iloc[3][0].split('_')[0] +
+            '_Penetration.png', transparent=True)
+
+plt.figure(16)
+create_heatmap(att_compiled, 'Total_Collision_Rate', 'Total Rate of Collisions ' +
+               all_files.iloc[3][0].split('_')[0] + ' Penetration', format='.4f')
+plt.savefig(file_save_path + 'Total_Rate_of_Collisions_' + all_files.iloc[3][0].split('_')[0] +
+            '_Penetration.png', transparent=True)
